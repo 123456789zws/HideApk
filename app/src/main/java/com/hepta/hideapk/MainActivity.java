@@ -12,9 +12,12 @@ import android.widget.Button;
 
 import com.hepta.hideapk.databinding.ActivityMainBinding;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 
+import dalvik.system.DexFile;
 import dalvik.system.PathClassLoader;
 
 public class MainActivity extends AppCompatActivity {
@@ -43,7 +46,6 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         try {
-
                             ApplicationInfo applicationInfo =  getApplication().getPackageManager().getApplicationInfo("com.hepta.fridaload", 0);
                             PathClassLoader pathClassLoader = new PathClassLoader(applicationInfo.sourceDir,null);
                             Class<?> LoadEntry = pathClassLoader.loadClass("com.hepta.fridaload.LoadEntry");
@@ -91,8 +93,9 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        Button ExternhideLoadSoBtn = binding.ExternHideLoadSo;
-        ExternhideLoadSoBtn.setOnClickListener(new View.OnClickListener() {
+
+        Button rxposedModuleLoadBtn = binding.rxposedModuleLoad;
+        rxposedModuleLoadBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 Log.e("rzx","ExternhideLoadSoBtn");
@@ -125,13 +128,109 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+
+        Button customLinkerLoadsoBtn = binding.customLinkerLoadso;
+        customLinkerLoadsoBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                customLinkerLoadPathSO();
+            }
+        });
+        Button ExternZlibLoadApk = binding.ExternZlibLoadApk;
+        ExternZlibLoadApk.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Log.e("rzx","zipLoadApk");
+                ApplicationInfo applicationInfo = null;
+                try {
+                    applicationInfo = getApplication().getPackageManager().getApplicationInfo("com.hepta.fridaload", 0);
+                } catch (PackageManager.NameNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+                zipLoadApk(applicationInfo.sourceDir);
+            }
+        });
+
+        Button SystenStubLoadSo = binding.SystenStubLoadSo;
+        SystenStubLoadSo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                SystenStubLoadSo();
+            }
+        });
+
+        Button classloadDexmerge = binding.classloadDexmerge;
+        classloadDexmerge.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Log.e("rzx","hideLoadApkBtn");
+                ApplicationInfo applicationInfo = null;
+                try {
+                    applicationInfo = getApplication().getPackageManager().getApplicationInfo("com.hepta.fridaload", 0);
+                } catch (PackageManager.NameNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+                ClassLoader classLoader = new PathClassLoader(".",ClassLoader.getSystemClassLoader());
+                classloadDexmerge(applicationInfo.sourceDir,classLoader);
+                Class<?> LoadEntry = null;
+                try {
+                    LoadEntry = classLoader.loadClass("com.hepta.fridaload.LoadEntry");
+                    Method method = LoadEntry.getMethod("text_java");
+                    method.invoke(null);
+                } catch (ClassNotFoundException | InvocationTargetException |
+                         NoSuchMethodException | IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+        });
+
+        Button javaDexmerge = binding.javaDexmerge;
+        javaDexmerge.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                ApplicationInfo applicationInfo = null;
+                try {
+                    applicationInfo = getApplication().getPackageManager().getApplicationInfo("com.hepta.fridaload", 0);
+                } catch (PackageManager.NameNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+
+                ClassLoader classLoader = Utils.mergeDex(getClassLoader(),applicationInfo);
+                Class<?> LoadEntry = null;
+                try {
+                    LoadEntry = classLoader.loadClass("com.hepta.fridaload.LoadEntry");
+                    Method method = LoadEntry.getMethod("text_java");
+                    method.invoke(null);
+                } catch (ClassNotFoundException | InvocationTargetException |
+                         NoSuchMethodException | IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+        Button pltHook = binding.pltHook;
+        pltHook.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                plt_hook();
+            }
+        });
+
     }
+
+
+    private native ClassLoader zipLoadApk(String s);
+    private native void SystenStubLoadSo();
+    private native void customLinkerLoadPathSO();
 
     private native void customFilehideApkLoad(String s);
     private native void customMemhideApkLoad(String s);
     private native ClassLoader GethideApkLoad(String s);
     private native void customhideSoLoad(String libnamePath);
+    private native void classloadDexmerge(String s,ClassLoader classLoader);
 
+    private native void plt_hook();
     /**
      * A native method that is implemented by the 'hideapk' native library,
      * which is packaged with this application.
