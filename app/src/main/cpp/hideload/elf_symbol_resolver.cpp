@@ -19,7 +19,7 @@
 #include <string.h>
 #include <vector>
 #include <algorithm>
-
+#include "linker_soinfo.h"
 
 #define LINE_MAX 2048
 
@@ -145,15 +145,18 @@ static std::vector<RuntimeModule> & getProcessMapWithProcMaps(){
     return *modules;
 }
 
+bool ends_with(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.substr(str.size() - suffix.size()) == suffix;
+}
+
 RuntimeModule GetProcessMaps(const char *name) {
     auto modules = getProcessMapWithProcMaps();
     for (auto module : modules) {
-        if (strstr(module.path, name) != 0) {
+        if (ends_with(module.path, name) != 0) {
             return module;
         }
     }
-
-
 
     return RuntimeModule{0};
 }
@@ -248,8 +251,6 @@ void *linkerElfCtxIterateSymbolTable(elf_ctx_t *ctx, const char *symbol_name) {
 
 
 
-
-
 void *linkerResolveElfInternalSymbol(const char *library_name, const char *symbol_name) {
     void *result = NULL;
 
@@ -280,121 +281,6 @@ void *linkerResolveElfInternalSymbol(const char *library_name, const char *symbo
             return NULL;
         }
 
-
-        linkerElfCtxInit(&ctx, mmap_buffer);
-        result = linkerElfCtxIterateSymbolTable(&ctx, symbol_name);
-
-        if (result)      //result 符号相较于Ehdr的偏移
-                        // ((addr_t)result + (addr_t)module.load_address    偏移+ 基址
-                        // ((addr_t)mmap_buffer - (addr_t)ctx.load_bias))   可能存在的偏移
-            result = (void *)((addr_t)result + (addr_t)module.load_address - ((addr_t)mmap_buffer - (addr_t)ctx.load_bias));
-        munmap(mmap_buffer,file_size);
-        close(fd);
-
-    }
-    return result;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-static const unsigned char encoding_table[64] = {
-        'A', 'B', 'C', 'D', 'E','F', 'G', 'H',
-        'I','J','K','L','M','N','O','P',
-        'Q','R','S','T', 'U', 'V', 'W','X',
-        'Y', 'Z','a', 'b', 'c', 'd', 'e', 'f',
-        'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-        'o','p', 'q', 'r', 's', 't', 'u', 'v',
-        'w', 'x', 'y', 'z','0', '1', '2', '3',
-        '4', '5', '6', '7', '8', '9','-', '_'
-};
-
-static uint8_t *decoding_table = NULL;
-
-void build_decoding_table()
-{
-    decoding_table = (uint8_t*)malloc(256);
-
-    for (int i = 0; i < 64; i++)
-        decoding_table[(uint8_t)encoding_table[i]] = i;
-}
-
-char * base64_decode(const char *data, size_t input_length, size_t *output_length)
-{
-    if (decoding_table == nullptr) build_decoding_table();
-
-    if (input_length % 4 != 0) return nullptr;
-
-    *output_length = input_length / 4 * 3;
-    if (data[input_length - 1] == '=') (*output_length)--;
-    if (data[input_length - 2] == '=') (*output_length)--;
-
-    auto *decoded_data = (char*)malloc(*output_length+1);
-    if (decoded_data == nullptr) return nullptr;
-    memset(decoded_data,0,*output_length+1);
-
-    for (int i = 0, j = 0; i < input_length;) {
-        uint32_t sextet_a = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
-        uint32_t sextet_b = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
-        uint32_t sextet_c = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
-        uint32_t sextet_d = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
-
-        uint32_t triple = (sextet_a << 3 * 6)
-                          + (sextet_b << 2 * 6)
-                          + (sextet_c << 1 * 6)
-                          + (sextet_d << 0 * 6);
-
-        if (j < *output_length) decoded_data[j++] = (triple >> 2 * 8) & 0xFF;
-        if (j < *output_length) decoded_data[j++] = (triple >> 1 * 8) & 0xFF;
-        if (j < *output_length) decoded_data[j++] = (triple >> 0 * 8) & 0xFF;
-    }
-
-    return decoded_data;
-}
-
-void *linkerResolveElfInternalSymbolBase64(const char *library_name, const char *base64_symbol_name) {
-    size_t output_length_encode = 0;
-
-    char* symbol_name = base64_decode(base64_symbol_name, strlen(base64_symbol_name),
-                                                       &output_length_encode);
-
-    void *result = NULL;
-    elf_ctx_t ctx;
-    memset(&ctx, 0, sizeof(elf_ctx_t));
-    RuntimeModule module = GetProcessMaps(library_name);
-    if(module.load_address){
-        size_t file_size = 0;
-        {
-            struct stat s;
-            int rt = stat(module.path, &s);
-            if (rt != 0) {
-                // printf("mmap %s failed\n", file_);
-                return NULL;
-            }
-            file_size = s.st_size;
-        }
-        int fd = open(module.path, O_RDONLY, 0);
-        if (fd < 0) {
-            // printf("%s open failed\n", file_);
-            return NULL;
-        }
-
-        // auto align
-        auto mmap_buffer = (uint8_t *)mmap(0, file_size, PROT_READ | PROT_WRITE, MAP_FILE | MAP_PRIVATE, fd, 0);
-        if (mmap_buffer == MAP_FAILED) {
-            // printf("mmap %s failed\n", file_);
-            return NULL;
-        }
-        close(fd);
-
         linkerElfCtxInit(&ctx, mmap_buffer);
         result = linkerElfCtxIterateSymbolTable(&ctx, symbol_name);
 
@@ -406,11 +292,31 @@ void *linkerResolveElfInternalSymbolBase64(const char *library_name, const char 
         close(fd);
 
     }
-    memset(symbol_name,0,output_length_encode);
-    free(symbol_name);
     return result;
 }
 
+
+// 当加载的so不存在随机偏移的时候,so的base=load_bias,这个时候,我们可以直接从map文件中获取load_bias,然后加上函数偏移就是函数的地址
+// 这个函数是建立在base=load_bias,这个时候我们可以轻而易举解析内存中的so文件为soinfo格式,然后通过soinfo 寻找函数的方式找到对应的函数.
+// 这种方式相比于文件查找函数更快,并且不需要打开文件
+void *linkerResolveElfInternalSymbol2(const char *library_name, const char *symbol_name) {
+    void *result = NULL;
+
+    RuntimeModule module = GetProcessMaps(library_name);
+    if(module.load_address){
+        soinfo si;
+        si.transform((ElfW(Ehdr) *)module.load_address);
+        SymbolName symbol_JNI_OnLoad(symbol_name);
+        const ElfW(Sym)* sym = si.find_symbol_by_name(symbol_JNI_OnLoad, nullptr);
+        if(sym== nullptr){
+            return nullptr;
+        }
+        ElfW(Addr) fun_addr = sym->st_value + si.load_bias;
+        return reinterpret_cast<void *>(fun_addr);
+    }
+
+    return result;
+}
 
 
 
